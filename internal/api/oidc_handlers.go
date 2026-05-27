@@ -214,6 +214,19 @@ func (h *Handler) OIDCCallback(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
 		return
 	}
+
+	// Set access token cookie for media/subresource requests (audio/video)
+	// where Authorization headers are not always present.
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "scriberr_access_token",
+		Value:    jwtToken,
+		Path:     "/",
+		Expires:  time.Now().Add(24 * time.Hour),
+		HttpOnly: true,
+		Secure:   h.config.SecureCookies,
+		SameSite: http.SameSiteLaxMode,
+	})
+
 	if c.Query("format") == "json" {
 		c.JSON(http.StatusOK, LoginResponse{Token: jwtToken})
 		return
