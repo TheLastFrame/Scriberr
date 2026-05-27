@@ -184,7 +184,16 @@ func (h *Handler) OIDCCallback(c *gin.Context) {
 
 	user, err := h.userRepo.FindByUsername(c.Request.Context(), username)
 	if err != nil {
-		pw, _ := auth.HashPassword(randomOIDCString(24))
+		randomPassword, randErr := randomOIDCString(24)
+		if randErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to provision user"})
+			return
+		}
+		pw, hashErr := auth.HashPassword(randomPassword)
+		if hashErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to provision user"})
+			return
+		}
 		newUser := &models.User{Username: username, Password: pw}
 		if err := h.userRepo.Create(c.Request.Context(), newUser); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to provision user"})
