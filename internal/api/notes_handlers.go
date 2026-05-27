@@ -48,13 +48,17 @@ func (h *Handler) ListNotes(c *gin.Context) {
 	}
 
 	// Ensure transcription exists
-	_, err := h.jobRepo.FindByID(c.Request.Context(), transcriptionID)
+	job, err := h.jobRepo.FindByID(c.Request.Context(), transcriptionID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Transcription not found"})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch transcription"})
+		return
+	}
+	if !ensureJobOwnership(c, job) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Transcription not found"})
 		return
 	}
 
@@ -108,7 +112,7 @@ func (h *Handler) CreateNote(c *gin.Context) {
 	}
 
 	// Ensure transcription exists
-	_, err := h.jobRepo.FindByID(c.Request.Context(), transcriptionID)
+	job, err := h.jobRepo.FindByID(c.Request.Context(), transcriptionID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			log.Printf("notes.CreateNote: transcription %s not found", transcriptionID)
@@ -117,6 +121,10 @@ func (h *Handler) CreateNote(c *gin.Context) {
 		}
 		log.Printf("notes.CreateNote: failed to fetch transcription %s: %v", transcriptionID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch transcription"})
+		return
+	}
+	if !ensureJobOwnership(c, job) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Transcription not found"})
 		return
 	}
 

@@ -313,6 +313,10 @@ func (h *Handler) UploadAudio(c *gin.Context) {
 		AudioPath: filePath,
 		Status:    models.StatusUploaded,
 	}
+	if userIDAny, exists := c.Get("user_id"); exists {
+		userID := userIDAny.(uint)
+		job.UserID = &userID
+	}
 
 	if title := c.PostForm(paramTitle); title != "" {
 		job.Title = &title
@@ -567,6 +571,11 @@ func (h *Handler) UploadMultiTrack(c *gin.Context) {
 // @Security BearerAuth
 func (h *Handler) GetMergeStatus(c *gin.Context) {
 	jobID := c.Param("id")
+	job, err := h.jobRepo.FindByID(c.Request.Context(), jobID)
+	if err != nil || !ensureJobOwnership(c, job) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Job not found"})
+		return
+	}
 
 	status, errorMsg, err := h.multiTrackProcessor.GetMergeStatus(jobID)
 	if err != nil {
@@ -601,6 +610,10 @@ func (h *Handler) GetTrackProgress(c *gin.Context) {
 	// Get the main job details using repository
 	job, err := h.jobRepo.FindWithAssociations(c.Request.Context(), jobID)
 	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Job not found"})
+		return
+	}
+	if !ensureJobOwnership(c, job) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Job not found"})
 		return
 	}
@@ -928,7 +941,16 @@ func (h *Handler) ListTranscriptionJobs(c *gin.Context) {
 		}
 	}
 
-	jobs, total, err := h.jobRepo.ListWithParams(c.Request.Context(), offset, limit, sortBy, sortOrder, searchQuery, updatedAfter)
+	var (
+		jobs  []models.TranscriptionJob
+		total int64
+		err   error
+	)
+	if userIDAny, exists := c.Get("user_id"); exists {
+		jobs, total, err = h.jobRepo.ListByUser(c.Request.Context(), userIDAny.(uint), offset, limit)
+	} else {
+		jobs, total, err = h.jobRepo.ListWithParams(c.Request.Context(), offset, limit, sortBy, sortOrder, searchQuery, updatedAfter)
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list jobs"})
 		return
@@ -960,6 +982,10 @@ func (h *Handler) GetTranscriptionJob(c *gin.Context) {
 
 	job, err := h.jobRepo.FindWithAssociations(c.Request.Context(), id)
 	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Job not found"})
+		return
+	}
+	if !ensureJobOwnership(c, job) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Job not found"})
 		return
 	}
@@ -1043,6 +1069,10 @@ func (h *Handler) getJobForTranscription(c *gin.Context, jobID string) (*models.
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get job"})
 		return nil, err
 	}
+	if !ensureJobOwnership(c, job) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Job not found"})
+		return nil, gorm.ErrRecordNotFound
+	}
 
 	// Allow transcription for uploaded, completed, and failed jobs (re-transcription)
 	if job.Status != models.StatusUploaded && job.Status != models.StatusCompleted && job.Status != models.StatusFailed {
@@ -1050,6 +1080,18 @@ func (h *Handler) getJobForTranscription(c *gin.Context, jobID string) (*models.
 		return nil, fmt.Errorf("invalid job status")
 	}
 	return job, nil
+}
+
+func ensureJobOwnership(c *gin.Context, job *models.TranscriptionJob) bool {
+	userIDAny, exists := c.Get("user_id")
+	if !exists {
+		return true
+	}
+	// Legacy rows without owner remain accessible to authenticated users until full migration.
+	if job.UserID == nil {
+		return true
+	}
+	return *job.UserID == userIDAny.(uint)
 }
 
 func (h *Handler) getValidatedTranscriptionParams(c *gin.Context, job *models.TranscriptionJob, jobID string) (*models.WhisperXParams, error) {

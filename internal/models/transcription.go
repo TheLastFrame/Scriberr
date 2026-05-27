@@ -10,6 +10,7 @@ import (
 // TranscriptionJob represents a transcription job record
 type TranscriptionJob struct {
 	ID                    string         `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	UserID                *uint          `json:"user_id,omitempty" gorm:"index"`
 	Title                 *string        `json:"title,omitempty" gorm:"type:text"`
 	Status                JobStatus      `json:"status" gorm:"type:varchar(20);not null;default:'pending'"`
 	AudioPath             string         `json:"audio_path" gorm:"type:text;not null"`

@@ -53,6 +53,10 @@ func (h *Handler) GetSpeakerMappings(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get transcription job"})
 		return
 	}
+	if !ensureJobOwnership(c, job) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Transcription job not found"})
+		return
+	}
 
 	// Check if diarization was enabled or if this is a multi-track job (which also has speakers)
 	// If no speaker info available, return empty array instead of error for graceful frontend handling
@@ -113,6 +117,10 @@ func (h *Handler) UpdateSpeakerMappings(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get transcription job"})
+		return
+	}
+	if !ensureJobOwnership(c, job) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Transcription job not found"})
 		return
 	}
 
