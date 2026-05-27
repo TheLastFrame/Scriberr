@@ -78,6 +78,8 @@ func SetupRoutes(handler *Handler, authService *auth.AuthService) *gin.Engine {
 			auth.GET("/registration-status", handler.GetRegistrationStatus)
 			auth.POST("/register", handler.Register)
 			auth.POST("/login", handler.Login)
+			auth.GET("/oidc/start", handler.OIDCStart)
+			auth.GET("/oidc/callback", handler.OIDCCallback)
 			auth.POST("/refresh", handler.Refresh)
 			auth.POST("/logout", handler.Logout)
 

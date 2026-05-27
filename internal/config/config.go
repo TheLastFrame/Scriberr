@@ -49,6 +49,7 @@ type Config struct {
 	OIDCJWKSURL       string
 	OIDCClientID      string
 	OIDCClientSecret  string
+	OIDCRedirectURL   string
 	OIDCUsernameClaim string
 }
 
@@ -85,6 +86,7 @@ func Load() *Config {
 		OIDCJWKSURL:       getEnv("OIDC_JWKS_URL", ""),
 		OIDCClientID:      getEnv("OIDC_CLIENT_ID", ""),
 		OIDCClientSecret:  getEnv("OIDC_CLIENT_SECRET", ""),
+		OIDCRedirectURL:   getEnv("OIDC_REDIRECT_URL", ""),
 		OIDCUsernameClaim: getEnv("OIDC_USERNAME_CLAIM", "preferred_username"),
 	}
 }

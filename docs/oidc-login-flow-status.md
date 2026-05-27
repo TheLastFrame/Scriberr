@@ -3,8 +3,10 @@
 Current status in backend:
 
 - OIDC token **validation scaffold** is wired into `AuthService` and middleware path.
-- A full OIDC browser login flow (**authorize redirect + callback + code exchange + session/cookie management**) is **not wired**.
-- Current API auth still relies on bearer token validation paths.
+- Basic OIDC browser login flow is wired with:
+  - `GET /api/v1/auth/oidc/start` (discovery + redirect to provider authorize endpoint)
+  - `GET /api/v1/auth/oidc/callback` (state check + code exchange + local JWT issuance)
+- Current API auth still uses local JWT for app session after OIDC callback.
 
-Implication:
-- You can configure OIDC verifier settings (including client credentials), but there is currently no end-user OIDC sign-in endpoint flow in this backend yet.
+Important limitation:
+- OIDC verifier still needs full JWKS signature validation hardening; current scaffold behavior should be treated as transitional.
