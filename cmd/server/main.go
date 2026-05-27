@@ -96,6 +96,7 @@ func main() {
 		Audience:      cfg.OIDCAudience,
 		JWKSURL:       cfg.OIDCJWKSURL,
 		ClientID:      cfg.OIDCClientID,
+		ClientSecret:  cfg.OIDCClientSecret,
 		UsernameClaim: cfg.OIDCUsernameClaim,
 	})
 	if err != nil {

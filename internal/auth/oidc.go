@@ -13,6 +13,7 @@ type OIDCConfig struct {
 	Audience      string
 	JWKSURL       string
 	ClientID      string
+	ClientSecret  string
 	UsernameClaim string
 }
 
