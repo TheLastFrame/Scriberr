@@ -13,6 +13,7 @@ import (
 
 	"scriberr/internal/models"
 	"scriberr/internal/repository"
+	"scriberr/internal/service"
 	"scriberr/internal/sse"
 	"scriberr/internal/transcription/interfaces"
 	"scriberr/internal/transcription/pipeline"
@@ -202,6 +203,9 @@ func (u *UnifiedTranscriptionService) ProcessJob(ctx context.Context, jobID stri
 	}
 
 	// Success
+	if err := service.NewFileService().SyncDirectoryToRemote(filepath.Join(u.outputDirectory, jobID)); err != nil {
+		logger.Warn("failed to sync generated transcription artifacts to remote storage", "job_id", jobID, "error", err)
+	}
 	updateExecutionStatus(models.StatusCompleted, "")
 	logger.Info("Job processed successfully", "job_id", jobID, "duration", time.Since(startTime))
 	return nil
