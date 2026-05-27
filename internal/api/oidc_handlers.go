@@ -211,5 +211,9 @@ func (h *Handler) OIDCCallback(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
 		return
 	}
-	c.JSON(http.StatusOK, LoginResponse{Token: jwtToken})
+	if c.Query("format") == "json" {
+		c.JSON(http.StatusOK, LoginResponse{Token: jwtToken})
+		return
+	}
+	c.Redirect(http.StatusFound, "/?token="+url.QueryEscape(jwtToken))
 }
