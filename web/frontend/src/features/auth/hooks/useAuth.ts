@@ -79,20 +79,22 @@ export function useAuth() {
     }, [token, isTokenExpired, logout]);
 
     useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const oidcToken = params.get("token");
+        if (!oidcToken) return;
+
+        login(oidcToken);
+        params.delete("token");
+        const cleanQuery = params.toString();
+        const newURL = `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ""}${window.location.hash}`;
+        window.history.replaceState({}, "", newURL);
+    }, [login]);
+
+    useEffect(() => {
         const initializeAuth = async () => {
             if (isInitialized) return;
 
             try {
-                const params = new URLSearchParams(window.location.search);
-                const oidcToken = params.get("token");
-                if (oidcToken) {
-                    login(oidcToken);
-                    params.delete("token");
-                    const cleanQuery = params.toString();
-                    const newURL = `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ""}${window.location.hash}`;
-                    window.history.replaceState({}, "", newURL);
-                }
-
                 const response = await fetch("/api/v1/auth/registration-status");
                 if (response.ok) {
                     const data = await response.json();

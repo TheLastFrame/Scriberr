@@ -159,9 +159,12 @@ func (h *Handler) OIDCCallback(c *gin.Context) {
 		return
 	}
 
-	candidate := tr.AccessToken
+	// For OIDC login identity, prefer ID token first.
+	// Access tokens may be opaque/provider-specific and are not guaranteed
+	// to be locally verifiable JWTs for this client.
+	candidate := tr.IDToken
 	if candidate == "" {
-		candidate = tr.IDToken
+		candidate = tr.AccessToken
 	}
 	claims, err := h.authService.ValidateToken(candidate)
 	if err != nil {
