@@ -1,10 +1,14 @@
 package auth
 
 import (
+	"crypto/rsa"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -29,9 +33,14 @@ type oidcDiscoveryDocument struct {
 }
 
 type oidcVerifier struct {
-	enabled bool
-	issuer  string
-	aud     string
+	enabled  bool
+	issuer   string
+	aud      string
+	jwksURL  string
+	client   *http.Client
+	mu       sync.RWMutex
+	keys     map[string]interface{}
+	lastSync time.Time
 }
 
 type oidcClaims struct {
@@ -39,6 +48,17 @@ type oidcClaims struct {
 	Email    string `json:"email"`
 	Sub      string `json:"sub"`
 	jwt.RegisteredClaims
+}
+
+type jwkSet struct {
+	Keys []struct {
+		Kty string `json:"kty"`
+		Kid string `json:"kid"`
+		Use string `json:"use"`
+		Alg string `json:"alg"`
+		N   string `json:"n"`
+		E   string `json:"e"`
+	} `json:"keys"`
 }
 
 func newOIDCVerifier(cfg OIDCConfig) (*oidcVerifier, error) {
@@ -56,8 +76,11 @@ func newOIDCVerifier(cfg OIDCConfig) (*oidcVerifier, error) {
 
 	return &oidcVerifier{
 		enabled: true,
-		issuer:  cfg.IssuerURL,
+		issuer:  strings.TrimRight(cfg.IssuerURL, "/"),
 		aud:     aud,
+		jwksURL: strings.TrimSpace(cfg.JWKSURL),
+		client:  &http.Client{Timeout: 8 * time.Second},
+		keys:    map[string]interface{}{},
 	}, nil
 }
 
@@ -95,20 +118,42 @@ func (v *oidcVerifier) validate(tokenString string) (*Claims, error) {
 	if !v.enabled {
 		return nil, fmt.Errorf("oidc disabled")
 	}
-
-	parser := jwt.NewParser()
-	claims := &oidcClaims{}
-	_, _, err := parser.ParseUnverified(tokenString, claims)
-	if err != nil {
+	if err := v.ensureKeys(); err != nil {
 		return nil, err
 	}
-	if claims.Issuer != v.issuer {
+	claims := &oidcClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (interface{}, error) {
+		if !strings.HasPrefix(t.Method.Alg(), "RS") {
+			return nil, fmt.Errorf("unsupported oidc signing algorithm: %s", t.Method.Alg())
+		}
+		kid, _ := t.Header["kid"].(string)
+		if kid == "" {
+			return nil, fmt.Errorf("missing kid")
+		}
+		v.mu.RLock()
+		key := v.keys[kid]
+		v.mu.RUnlock()
+		if key == nil {
+			_ = v.ensureKeys()
+			v.mu.RLock()
+			key = v.keys[kid]
+			v.mu.RUnlock()
+			if key == nil {
+				return nil, fmt.Errorf("no matching jwk for kid")
+			}
+		}
+		return key, nil
+	})
+	if err != nil || !token.Valid {
+		return nil, fmt.Errorf("oidc token validation failed: %w", err)
+	}
+	if strings.TrimRight(claims.Issuer, "/") != v.issuer {
 		return nil, fmt.Errorf("invalid issuer")
 	}
 	if v.aud != "" {
 		matched := false
-		for _, aud := range claims.Audience {
-			if aud == v.aud {
+		for _, a := range claims.Audience {
+			if a == v.aud {
 				matched = true
 				break
 			}
@@ -117,6 +162,68 @@ func (v *oidcVerifier) validate(tokenString string) (*Claims, error) {
 			return nil, fmt.Errorf("invalid audience")
 		}
 	}
+	return &Claims{
+		Username:         claims.Username,
+		OIDCSubject:      claims.Sub,
+		OIDCEmail:        claims.Email,
+		OIDCIssuer:       claims.Issuer,
+		RegisteredClaims: claims.RegisteredClaims,
+	}, nil
+}
 
-	return nil, fmt.Errorf("oidc token signature validation not yet configured; set up jwks verifier in follow-up PR")
+func (v *oidcVerifier) ensureKeys() error {
+	v.mu.RLock()
+	if time.Since(v.lastSync) < 10*time.Minute && len(v.keys) > 0 {
+		v.mu.RUnlock()
+		return nil
+	}
+	v.mu.RUnlock()
+	jwksURL := v.jwksURL
+	if jwksURL == "" {
+		discoveryURL := strings.TrimRight(v.issuer, "/") + "/.well-known/openid-configuration"
+		resp, err := v.client.Get(discoveryURL) //nolint:gosec
+		if err != nil {
+			return fmt.Errorf("oidc discovery request failed: %w", err)
+		}
+		defer resp.Body.Close()
+		var doc oidcDiscoveryDocument
+		if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
+			return fmt.Errorf("failed to decode oidc discovery document: %w", err)
+		}
+		jwksURL = doc.JWKSURI
+	}
+	resp, err := v.client.Get(jwksURL) //nolint:gosec
+	if err != nil {
+		return fmt.Errorf("failed to fetch jwks: %w", err)
+	}
+	defer resp.Body.Close()
+	var set jwkSet
+	if err := json.NewDecoder(resp.Body).Decode(&set); err != nil {
+		return fmt.Errorf("failed to decode jwks: %w", err)
+	}
+	keys := map[string]interface{}{}
+	for _, k := range set.Keys {
+		if strings.ToUpper(k.Kty) != "RSA" || k.Kid == "" || k.N == "" || k.E == "" {
+			continue
+		}
+		nBytes, err := base64.RawURLEncoding.DecodeString(k.N)
+		if err != nil {
+			continue
+		}
+		eBytes, err := base64.RawURLEncoding.DecodeString(k.E)
+		if err != nil {
+			continue
+		}
+		n := new(big.Int).SetBytes(nBytes)
+		e := new(big.Int).SetBytes(eBytes).Int64()
+		keys[k.Kid] = &rsa.PublicKey{N: n, E: int(e)}
+	}
+	if len(keys) == 0 {
+		return fmt.Errorf("no usable rsa keys in jwks")
+	}
+	v.mu.Lock()
+	v.keys = keys
+	v.lastSync = time.Now()
+	v.mu.Unlock()
+	return nil
 }
