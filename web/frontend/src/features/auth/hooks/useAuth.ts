@@ -6,6 +6,7 @@ import '../../../lib/authTypes';
 export function useAuth() {
     const {
         token,
+        isAdmin,
         requiresRegistration,
         isInitialized,
         setToken,
@@ -132,6 +133,7 @@ export function useAuth() {
 
     return {
         token,
+        isAdmin,
         isAuthenticated,
         requiresRegistration,
         isInitialized,

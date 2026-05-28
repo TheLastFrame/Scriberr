@@ -118,6 +118,7 @@ type LoginResponse struct {
 	User  struct {
 		ID       uint   `json:"id"`
 		Username string `json:"username"`
+		IsAdmin  bool   `json:"is_admin"`
 	} `json:"user"`
 }
 
@@ -1094,6 +1095,24 @@ func ensureJobOwnership(c *gin.Context, job *models.TranscriptionJob) bool {
 	return *job.UserID == userIDAny.(uint)
 }
 
+func (h *Handler) requireAdmin(c *gin.Context) bool {
+	userIDAny, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+		return false
+	}
+	user, err := h.userRepo.FindByID(c.Request.Context(), userIDAny.(uint))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user"})
+		return false
+	}
+	if !user.IsAdmin {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Admin privileges required"})
+		return false
+	}
+	return true
+}
+
 func (h *Handler) getValidatedTranscriptionParams(c *gin.Context, job *models.TranscriptionJob, jobID string) (*models.WhisperXParams, error) {
 	// Set defaults
 	requestParams := models.WhisperXParams{
@@ -1613,6 +1632,7 @@ func (h *Handler) Login(c *gin.Context) {
 	response := LoginResponse{Token: token}
 	response.User.ID = user.ID
 	response.User.Username = user.Username
+	response.User.IsAdmin = user.IsAdmin
 
 	logger.AuthEvent("login", req.Username, c.ClientIP(), true)
 	c.JSON(http.StatusOK, response)
@@ -1721,6 +1741,7 @@ func (h *Handler) Register(c *gin.Context) {
 	user := models.User{
 		Username: req.Username,
 		Password: hashedPassword,
+		IsAdmin:  true,
 	}
 
 	if err := h.userRepo.Create(c.Request.Context(), &user); err != nil {
@@ -1746,6 +1767,7 @@ func (h *Handler) Register(c *gin.Context) {
 	response := LoginResponse{Token: token}
 	response.User.ID = user.ID
 	response.User.Username = user.Username
+	response.User.IsAdmin = user.IsAdmin
 
 	c.JSON(http.StatusCreated, response)
 }
@@ -2078,6 +2100,10 @@ func (h *Handler) GetLLMConfig(c *gin.Context) {
 // @Security BearerAuth
 // @Router /api/v1/llm/config [post]
 func (h *Handler) SaveLLMConfig(c *gin.Context) {
+	if !h.requireAdmin(c) {
+		return
+	}
+
 	var req LLMConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request: " + err.Error()})

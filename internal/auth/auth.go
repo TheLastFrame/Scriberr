@@ -41,6 +41,7 @@ func NewAuthServiceWithOIDC(jwtSecret string, oidcConfig OIDCConfig) (*AuthServi
 type Claims struct {
 	UserID      uint   `json:"user_id"`
 	Username    string `json:"username"`
+	IsAdmin     bool   `json:"is_admin"`
 	OIDCSubject string `json:"oidc_subject,omitempty"`
 	OIDCEmail   string `json:"oidc_email,omitempty"`
 	OIDCIssuer  string `json:"oidc_issuer,omitempty"`
@@ -52,6 +53,7 @@ func (as *AuthService) GenerateToken(user *models.User) (string, error) {
 	claims := &Claims{
 		UserID:   user.ID,
 		Username: user.Username,
+		IsAdmin:  user.IsAdmin,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -67,6 +69,7 @@ func (as *AuthService) GenerateLongLivedToken(user *models.User) (string, error)
 	claims := &Claims{
 		UserID:   user.ID,
 		Username: user.Username,
+		IsAdmin:  user.IsAdmin,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(365 * 24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

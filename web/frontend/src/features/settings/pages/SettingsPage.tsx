@@ -18,10 +18,12 @@ import { SummaryTemplateDialog, type SummaryTemplate } from "../components/Summa
 import { SummaryTemplatesTable } from "../components/SummaryTemplatesTable";
 import { CLISettingsTab } from "../components/CLISettingsTab";
 import { useAuth } from "@/features/auth/hooks/useAuth";
+import { useNavigate } from "react-router-dom";
 
 export function Settings() {
   const [activeTab, setActiveTab] = useState("transcription");
-  const { getAuthHeaders } = useAuth();
+  const { getAuthHeaders, isAdmin } = useAuth();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [summaryDialogOpen, setSummaryDialogOpen] = useState(false);
   const [editingSummary, setEditingSummary] = useState<SummaryTemplate | null>(null);
@@ -29,6 +31,12 @@ export function Settings() {
   const [llmConfigured, setLlmConfigured] = useState(false);
 
   // Fetch LLM config and models
+  useEffect(() => {
+    if (!isAdmin) {
+      navigate("/");
+    }
+  }, [isAdmin, navigate]);
+
   useEffect(() => {
     const fetchLLM = async () => {
       try {
