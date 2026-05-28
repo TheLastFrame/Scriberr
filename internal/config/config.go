@@ -43,14 +43,15 @@ type Config struct {
 	HFToken string
 
 	// OIDC configuration (generic, can be used with providers like Keycloak)
-	OIDCEnabled       bool
-	OIDCIssuerURL     string
-	OIDCAudience      string
-	OIDCJWKSURL       string
-	OIDCClientID      string
-	OIDCClientSecret  string
-	OIDCRedirectURL   string
-	OIDCUsernameClaim string
+	OIDCEnabled               bool
+	OIDCIssuerURL             string
+	OIDCAudience              string
+	OIDCJWKSURL               string
+	OIDCClientID              string
+	OIDCClientSecret          string
+	OIDCRedirectURL           string
+	OIDCPostLogoutRedirectURL string
+	OIDCUsernameClaim         string
 }
 
 // Load loads configuration from environment variables and .env file
@@ -67,27 +68,28 @@ func Load() *Config {
 	}
 
 	return &Config{
-		Port:              getEnv("PORT", "8080"),
-		Host:              getEnv("HOST", "0.0.0.0"),
-		Environment:       getEnv("APP_ENV", "development"),
-		AllowedOrigins:    strings.Split(getEnv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:8080"), ","),
-		DatabasePath:      getEnv("DATABASE_PATH", "data/scriberr.db"),
-		JWTSecret:         getJWTSecret(),
-		UploadDir:         getEnv("UPLOAD_DIR", "data/uploads"),
-		TranscriptsDir:    getEnv("TRANSCRIPTS_DIR", "data/transcripts"),
-		TempDir:           getEnv("TEMP_DIR", "data/temp"),
-		WhisperXEnv:       getEnv("WHISPERX_ENV", "data/whisperx-env"),
-		SecureCookies:     getEnv("SECURE_COOKIES", defaultSecure) == "true",
-		OpenAIAPIKey:      getEnv("OPENAI_API_KEY", ""),
-		HFToken:           getEnv("HF_TOKEN", ""),
-		OIDCEnabled:       strings.ToLower(getEnv("OIDC_ENABLED", "false")) == "true",
-		OIDCIssuerURL:     getEnv("OIDC_ISSUER_URL", ""),
-		OIDCAudience:      getEnv("OIDC_AUDIENCE", ""),
-		OIDCJWKSURL:       getEnv("OIDC_JWKS_URL", ""),
-		OIDCClientID:      getEnv("OIDC_CLIENT_ID", ""),
-		OIDCClientSecret:  getEnv("OIDC_CLIENT_SECRET", ""),
-		OIDCRedirectURL:   getEnv("OIDC_REDIRECT_URL", ""),
-		OIDCUsernameClaim: getEnv("OIDC_USERNAME_CLAIM", "preferred_username"),
+		Port:                      getEnv("PORT", "8080"),
+		Host:                      getEnv("HOST", "0.0.0.0"),
+		Environment:               getEnv("APP_ENV", "development"),
+		AllowedOrigins:            strings.Split(getEnv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:8080"), ","),
+		DatabasePath:              getEnv("DATABASE_PATH", "data/scriberr.db"),
+		JWTSecret:                 getJWTSecret(),
+		UploadDir:                 getEnv("UPLOAD_DIR", "data/uploads"),
+		TranscriptsDir:            getEnv("TRANSCRIPTS_DIR", "data/transcripts"),
+		TempDir:                   getEnv("TEMP_DIR", "data/temp"),
+		WhisperXEnv:               getEnv("WHISPERX_ENV", "data/whisperx-env"),
+		SecureCookies:             getEnv("SECURE_COOKIES", defaultSecure) == "true",
+		OpenAIAPIKey:              getEnv("OPENAI_API_KEY", ""),
+		HFToken:                   getEnv("HF_TOKEN", ""),
+		OIDCEnabled:               strings.ToLower(getEnv("OIDC_ENABLED", "false")) == "true",
+		OIDCIssuerURL:             getEnv("OIDC_ISSUER_URL", ""),
+		OIDCAudience:              getEnv("OIDC_AUDIENCE", ""),
+		OIDCJWKSURL:               getEnv("OIDC_JWKS_URL", ""),
+		OIDCClientID:              getEnv("OIDC_CLIENT_ID", ""),
+		OIDCClientSecret:          getEnv("OIDC_CLIENT_SECRET", ""),
+		OIDCRedirectURL:           getEnv("OIDC_REDIRECT_URL", ""),
+		OIDCPostLogoutRedirectURL: getEnv("OIDC_POST_LOGOUT_REDIRECT_URL", ""),
+		OIDCUsernameClaim:         getEnv("OIDC_USERNAME_CLAIM", "preferred_username"),
 	}
 }
 

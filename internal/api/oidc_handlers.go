@@ -20,6 +20,7 @@ import (
 type oidcDiscovery struct {
 	AuthorizationEndpoint string `json:"authorization_endpoint"`
 	TokenEndpoint         string `json:"token_endpoint"`
+	EndSessionEndpoint    string `json:"end_session_endpoint"`
 }
 
 type oidcTokenResponse struct {
@@ -232,4 +233,66 @@ func (h *Handler) OIDCCallback(c *gin.Context) {
 		return
 	}
 	c.Redirect(http.StatusFound, "/?token="+url.QueryEscape(jwtToken))
+}
+
+func (h *Handler) OIDCLogout(c *gin.Context) {
+	// Always clear local session first (same behavior as Logout)
+	if cookie, err := c.Cookie("scriberr_refresh_token"); err == nil {
+		h.revokeRefreshToken(c, cookie)
+	}
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "scriberr_refresh_token",
+		Value:    "",
+		Path:     "/",
+		Expires:  time.Unix(0, 0),
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   h.config.SecureCookies,
+	})
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "scriberr_access_token",
+		Value:    "",
+		Path:     "/",
+		Expires:  time.Unix(0, 0),
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   h.config.SecureCookies,
+	})
+	if !h.config.OIDCEnabled || h.config.OIDCIssuerURL == "" {
+		return
+	}
+
+	issuer := strings.TrimRight(h.config.OIDCIssuerURL, "/")
+	discoURL := issuer + "/.well-known/openid-configuration"
+	resp, err := http.Get(discoURL) //nolint:gosec
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	var disco oidcDiscovery
+	if err := json.NewDecoder(resp.Body).Decode(&disco); err != nil || disco.EndSessionEndpoint == "" {
+		return
+	}
+
+	postLogout := h.config.OIDCPostLogoutRedirectURL
+	if postLogout == "" {
+		scheme := "http"
+		if c.Request.TLS != nil {
+			scheme = "https"
+		}
+		postLogout = fmt.Sprintf("%s://%s/", scheme, c.Request.Host)
+	}
+	u, err := url.Parse(disco.EndSessionEndpoint)
+	if err != nil {
+		return
+	}
+	q := u.Query()
+	q.Set("post_logout_redirect_uri", postLogout)
+	if h.config.OIDCClientID != "" {
+		q.Set("client_id", h.config.OIDCClientID)
+	}
+	u.RawQuery = q.Encode()
+	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully", "redirect_url": u.String()})
 }
