@@ -24,6 +24,7 @@ type OIDCConfig struct {
 	ClientSecret  string
 	UsernameClaim string
 	AdminRole     string
+	RoleClaims    string
 }
 
 type oidcDiscoveryDocument struct {
@@ -34,15 +35,16 @@ type oidcDiscoveryDocument struct {
 }
 
 type oidcVerifier struct {
-	enabled   bool
-	issuer    string
-	aud       string
-	jwksURL   string
-	adminRole string
-	client    *http.Client
-	mu        sync.RWMutex
-	keys      map[string]interface{}
-	lastSync  time.Time
+	enabled    bool
+	issuer     string
+	aud        string
+	jwksURL    string
+	adminRole  string
+	roleClaims []string
+	client     *http.Client
+	mu         sync.RWMutex
+	keys       map[string]interface{}
+	lastSync   time.Time
 }
 
 type oidcRoleAccess struct {
@@ -87,15 +89,17 @@ func newOIDCVerifier(cfg OIDCConfig) (*oidcVerifier, error) {
 	if adminRole == "" {
 		adminRole = "admin"
 	}
+	roleClaims := parseOIDCRoleClaims(cfg.RoleClaims)
 
 	return &oidcVerifier{
-		enabled:   true,
-		issuer:    strings.TrimRight(cfg.IssuerURL, "/"),
-		aud:       aud,
-		jwksURL:   strings.TrimSpace(cfg.JWKSURL),
-		adminRole: adminRole,
-		client:    &http.Client{Timeout: 8 * time.Second},
-		keys:      map[string]interface{}{},
+		enabled:    true,
+		issuer:     strings.TrimRight(cfg.IssuerURL, "/"),
+		aud:        aud,
+		jwksURL:    strings.TrimSpace(cfg.JWKSURL),
+		adminRole:  adminRole,
+		roleClaims: roleClaims,
+		client:     &http.Client{Timeout: 8 * time.Second},
+		keys:       map[string]interface{}{},
 	}, nil
 }
 
@@ -179,7 +183,7 @@ func (v *oidcVerifier) validate(tokenString string) (*Claims, error) {
 	}
 	return &Claims{
 		Username:         claims.Username,
-		IsAdmin:          claims.hasRole(v.adminRole),
+		IsAdmin:          claims.hasRole(v.adminRole, v.roleClaims),
 		OIDCSubject:      claims.Sub,
 		OIDCEmail:        claims.Email,
 		OIDCIssuer:       claims.Issuer,
@@ -187,16 +191,58 @@ func (v *oidcVerifier) validate(tokenString string) (*Claims, error) {
 	}, nil
 }
 
-func (c *oidcClaims) hasRole(roleName string) bool {
-	if hasOIDCRole(c.Roles, roleName) || hasOIDCRole(c.Groups, roleName) || hasOIDCRole(c.RealmAccess.Roles, roleName) {
-		return true
-	}
-	for _, access := range c.ResourceAccess {
-		if hasOIDCRole(access.Roles, roleName) {
-			return true
+func (c *oidcClaims) hasRole(roleName string, roleClaims []string) bool {
+	for _, claim := range roleClaims {
+		switch claim {
+		case "roles":
+			if hasOIDCRole(c.Roles, roleName) {
+				return true
+			}
+		case "groups":
+			if hasOIDCRole(c.Groups, roleName) {
+				return true
+			}
+		case "realm_access.roles":
+			if hasOIDCRole(c.RealmAccess.Roles, roleName) {
+				return true
+			}
+		case "resource_access.*.roles":
+			for _, access := range c.ResourceAccess {
+				if hasOIDCRole(access.Roles, roleName) {
+					return true
+				}
+			}
+		default:
+			if strings.HasPrefix(claim, "resource_access.") && strings.HasSuffix(claim, ".roles") {
+				clientID := strings.TrimSuffix(strings.TrimPrefix(claim, "resource_access."), ".roles")
+				if access, ok := c.ResourceAccess[clientID]; ok && hasOIDCRole(access.Roles, roleName) {
+					return true
+				}
+			}
 		}
 	}
 	return false
+}
+
+func parseOIDCRoleClaims(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return []string{"roles", "groups", "realm_access.roles", "resource_access.*.roles"}
+	}
+	parts := strings.Split(value, ",")
+	claims := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, part := range parts {
+		claim := strings.TrimSpace(part)
+		if claim == "" {
+			continue
+		}
+		if _, ok := seen[claim]; ok {
+			continue
+		}
+		seen[claim] = struct{}{}
+		claims = append(claims, claim)
+	}
+	return claims
 }
 
 func hasOIDCRole(roles []string, roleName string) bool {
