@@ -198,12 +198,21 @@ func (h *Handler) OIDCCallback(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to provision user"})
 			return
 		}
-		newUser := &models.User{Username: username, Password: pw}
+		newUser := &models.User{Username: username, Password: pw, IsAdmin: claims.IsAdmin}
 		if err := h.userRepo.Create(c.Request.Context(), newUser); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to provision user"})
 			return
 		}
 		user = newUser
+	} else if claims.IsAdmin && !user.IsAdmin {
+		// Promote existing OIDC users when the provider asserts the admin role.
+		// We intentionally do not auto-demote here to avoid accidentally locking out
+		// a local bootstrap admin that shares an OIDC username.
+		user.IsAdmin = true
+		if err := h.userRepo.Update(c.Request.Context(), user); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update user role"})
+			return
+		}
 	}
 
 	jwtToken, err := h.authService.GenerateToken(user)

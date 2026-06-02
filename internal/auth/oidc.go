@@ -43,10 +43,18 @@ type oidcVerifier struct {
 	lastSync time.Time
 }
 
+type oidcRoleAccess struct {
+	Roles []string `json:"roles"`
+}
+
 type oidcClaims struct {
-	Username string `json:"preferred_username"`
-	Email    string `json:"email"`
-	Sub      string `json:"sub"`
+	Username       string                    `json:"preferred_username"`
+	Email          string                    `json:"email"`
+	Sub            string                    `json:"sub"`
+	Roles          []string                  `json:"roles"`
+	Groups         []string                  `json:"groups"`
+	RealmAccess    oidcRoleAccess            `json:"realm_access"`
+	ResourceAccess map[string]oidcRoleAccess `json:"resource_access"`
 	jwt.RegisteredClaims
 }
 
@@ -164,11 +172,34 @@ func (v *oidcVerifier) validate(tokenString string) (*Claims, error) {
 	}
 	return &Claims{
 		Username:         claims.Username,
+		IsAdmin:          claims.hasAdminRole(),
 		OIDCSubject:      claims.Sub,
 		OIDCEmail:        claims.Email,
 		OIDCIssuer:       claims.Issuer,
 		RegisteredClaims: claims.RegisteredClaims,
 	}, nil
+}
+
+func (c *oidcClaims) hasAdminRole() bool {
+	if hasAdminRole(c.Roles) || hasAdminRole(c.Groups) || hasAdminRole(c.RealmAccess.Roles) {
+		return true
+	}
+	for _, access := range c.ResourceAccess {
+		if hasAdminRole(access.Roles) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasAdminRole(roles []string) bool {
+	for _, role := range roles {
+		role = strings.Trim(strings.TrimSpace(role), "/")
+		if strings.EqualFold(role, "admin") {
+			return true
+		}
+	}
+	return false
 }
 
 func (v *oidcVerifier) ensureKeys() error {
