@@ -204,11 +204,10 @@ func (h *Handler) OIDCCallback(c *gin.Context) {
 			return
 		}
 		user = newUser
-	} else if claims.IsAdmin && !user.IsAdmin {
-		// Promote existing OIDC users when the provider asserts the admin role.
-		// We intentionally do not auto-demote here to avoid accidentally locking out
-		// a local bootstrap admin that shares an OIDC username.
-		user.IsAdmin = true
+	} else if user.IsAdmin != claims.IsAdmin {
+		// Keep OIDC-managed admin status in sync on every OIDC login.
+		// If the provider removes the configured admin role, the local user is demoted.
+		user.IsAdmin = claims.IsAdmin
 		if err := h.userRepo.Update(c.Request.Context(), user); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update user role"})
 			return

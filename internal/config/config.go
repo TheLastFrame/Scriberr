@@ -52,6 +52,7 @@ type Config struct {
 	OIDCRedirectURL           string
 	OIDCPostLogoutRedirectURL string
 	OIDCUsernameClaim         string
+	OIDCAdminRole             string
 }
 
 // Load loads configuration from environment variables and .env file
@@ -90,6 +91,7 @@ func Load() *Config {
 		OIDCRedirectURL:           getEnv("OIDC_REDIRECT_URL", ""),
 		OIDCPostLogoutRedirectURL: getEnv("OIDC_POST_LOGOUT_REDIRECT_URL", ""),
 		OIDCUsernameClaim:         getEnv("OIDC_USERNAME_CLAIM", "preferred_username"),
+		OIDCAdminRole:             getEnv("OIDC_ADMIN_ROLE", "admin"),
 	}
 }
 

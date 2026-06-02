@@ -98,6 +98,7 @@ func main() {
 		ClientID:      cfg.OIDCClientID,
 		ClientSecret:  cfg.OIDCClientSecret,
 		UsernameClaim: cfg.OIDCUsernameClaim,
+		AdminRole:     cfg.OIDCAdminRole,
 	})
 	if err != nil {
 		logger.Error("Failed to setup authentication", "error", err)

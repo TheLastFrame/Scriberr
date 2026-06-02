@@ -2,7 +2,7 @@ package auth
 
 import "testing"
 
-func TestOIDCClaimsHasAdminRole(t *testing.T) {
+func TestOIDCClaimsHasRole(t *testing.T) {
 	tests := []struct {
 		name   string
 		claims oidcClaims
@@ -42,9 +42,22 @@ func TestOIDCClaimsHasAdminRole(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.claims.hasAdminRole(); got != tt.want {
-				t.Fatalf("hasAdminRole() = %v, want %v", got, tt.want)
+			if got := tt.claims.hasRole("admin"); got != tt.want {
+				t.Fatalf("hasRole(admin) = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestOIDCClaimsHasRoleUsesConfiguredRoleName(t *testing.T) {
+	claims := oidcClaims{
+		RealmAccess: oidcRoleAccess{Roles: []string{"scriberr-admin"}},
+	}
+
+	if !claims.hasRole("scriberr-admin") {
+		t.Fatal("expected configured role to grant admin")
+	}
+	if claims.hasRole("admin") {
+		t.Fatal("did not expect hardcoded admin role to match when only configured role is present")
 	}
 }

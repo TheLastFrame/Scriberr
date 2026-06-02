@@ -23,6 +23,7 @@ type OIDCConfig struct {
 	ClientID      string
 	ClientSecret  string
 	UsernameClaim string
+	AdminRole     string
 }
 
 type oidcDiscoveryDocument struct {
@@ -33,14 +34,15 @@ type oidcDiscoveryDocument struct {
 }
 
 type oidcVerifier struct {
-	enabled  bool
-	issuer   string
-	aud      string
-	jwksURL  string
-	client   *http.Client
-	mu       sync.RWMutex
-	keys     map[string]interface{}
-	lastSync time.Time
+	enabled   bool
+	issuer    string
+	aud       string
+	jwksURL   string
+	adminRole string
+	client    *http.Client
+	mu        sync.RWMutex
+	keys      map[string]interface{}
+	lastSync  time.Time
 }
 
 type oidcRoleAccess struct {
@@ -81,14 +83,19 @@ func newOIDCVerifier(cfg OIDCConfig) (*oidcVerifier, error) {
 	if aud == "" {
 		aud = cfg.ClientID
 	}
+	adminRole := strings.TrimSpace(cfg.AdminRole)
+	if adminRole == "" {
+		adminRole = "admin"
+	}
 
 	return &oidcVerifier{
-		enabled: true,
-		issuer:  strings.TrimRight(cfg.IssuerURL, "/"),
-		aud:     aud,
-		jwksURL: strings.TrimSpace(cfg.JWKSURL),
-		client:  &http.Client{Timeout: 8 * time.Second},
-		keys:    map[string]interface{}{},
+		enabled:   true,
+		issuer:    strings.TrimRight(cfg.IssuerURL, "/"),
+		aud:       aud,
+		jwksURL:   strings.TrimSpace(cfg.JWKSURL),
+		adminRole: adminRole,
+		client:    &http.Client{Timeout: 8 * time.Second},
+		keys:      map[string]interface{}{},
 	}, nil
 }
 
@@ -172,7 +179,7 @@ func (v *oidcVerifier) validate(tokenString string) (*Claims, error) {
 	}
 	return &Claims{
 		Username:         claims.Username,
-		IsAdmin:          claims.hasAdminRole(),
+		IsAdmin:          claims.hasRole(v.adminRole),
 		OIDCSubject:      claims.Sub,
 		OIDCEmail:        claims.Email,
 		OIDCIssuer:       claims.Issuer,
@@ -180,22 +187,26 @@ func (v *oidcVerifier) validate(tokenString string) (*Claims, error) {
 	}, nil
 }
 
-func (c *oidcClaims) hasAdminRole() bool {
-	if hasAdminRole(c.Roles) || hasAdminRole(c.Groups) || hasAdminRole(c.RealmAccess.Roles) {
+func (c *oidcClaims) hasRole(roleName string) bool {
+	if hasOIDCRole(c.Roles, roleName) || hasOIDCRole(c.Groups, roleName) || hasOIDCRole(c.RealmAccess.Roles, roleName) {
 		return true
 	}
 	for _, access := range c.ResourceAccess {
-		if hasAdminRole(access.Roles) {
+		if hasOIDCRole(access.Roles, roleName) {
 			return true
 		}
 	}
 	return false
 }
 
-func hasAdminRole(roles []string) bool {
+func hasOIDCRole(roles []string, roleName string) bool {
+	roleName = strings.Trim(strings.TrimSpace(roleName), "/")
+	if roleName == "" {
+		return false
+	}
 	for _, role := range roles {
 		role = strings.Trim(strings.TrimSpace(role), "/")
-		if strings.EqualFold(role, "admin") {
+		if strings.EqualFold(role, roleName) {
 			return true
 		}
 	}
