@@ -59,6 +59,15 @@ func Initialize(dbPath string) error {
 	sqlDB.SetConnMaxLifetime(30 * time.Minute) // Reset connections every 30 minutes
 	sqlDB.SetConnMaxIdleTime(5 * time.Minute)  // Close idle connections after 5 minutes
 
+	// Track whether the admin column is being introduced for an existing install.
+	// AutoMigrate adds new columns with their zero/default value, so existing users
+	// need a one-time promotion to preserve access to global settings after upgrade.
+	userTableExists := DB.Migrator().HasTable(&models.User{})
+	userAdminColumnExists := false
+	if userTableExists {
+		userAdminColumnExists = DB.Migrator().HasColumn(&models.User{}, "is_admin")
+	}
+
 	// Auto migrate the schema
 	if err := DB.AutoMigrate(
 		&models.TranscriptionJob{},
@@ -80,6 +89,10 @@ func Initialize(dbPath string) error {
 		return fmt.Errorf("failed to auto migrate: %v", err)
 	}
 
+	if err := ensureAdminUpgrade(userTableExists, userAdminColumnExists); err != nil {
+		return err
+	}
+
 	// Cleanup duplicate speaker mappings before creating unique index (for backward compatibility)
 	// Keep the latest mapping for each (job_id, original_speaker) pair
 	cleanupQuery := `
@@ -99,6 +112,45 @@ func Initialize(dbPath string) error {
 	// Add unique constraint for speaker mappings (transcription_job_id + original_speaker)
 	if err := DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_speaker_mappings_unique ON speaker_mappings(transcription_job_id, original_speaker)").Error; err != nil {
 		return fmt.Errorf("failed to create unique constraint for speaker mappings: %v", err)
+	}
+
+	return nil
+}
+
+func ensureAdminUpgrade(userTableExisted, userAdminColumnExisted bool) error {
+	if !userTableExisted {
+		return nil
+	}
+
+	var userCount int64
+	if err := DB.Model(&models.User{}).Count(&userCount).Error; err != nil {
+		return fmt.Errorf("failed to count users during admin migration: %v", err)
+	}
+	if userCount == 0 {
+		return nil
+	}
+
+	// Primary upgrade path: when is_admin is first introduced to an existing
+	// database, preserve existing operators' settings access by making all
+	// existing users admins.
+	if !userAdminColumnExisted {
+		if err := DB.Model(&models.User{}).Where("is_admin = ?", false).Update("is_admin", true).Error; err != nil {
+			return fmt.Errorf("failed to promote existing users to admin: %v", err)
+		}
+		return nil
+	}
+
+	// Safety net for installs that may have briefly run a build after the column
+	// existed but before admin promotion logic was present. Avoid locking everyone
+	// out of global settings if no admin remains.
+	var adminCount int64
+	if err := DB.Model(&models.User{}).Where("is_admin = ?", true).Count(&adminCount).Error; err != nil {
+		return fmt.Errorf("failed to count admins during admin migration: %v", err)
+	}
+	if adminCount == 0 {
+		if err := DB.Model(&models.User{}).Where("is_admin = ?", false).Update("is_admin", true).Error; err != nil {
+			return fmt.Errorf("failed to promote users when no admins exist: %v", err)
+		}
 	}
 
 	return nil
