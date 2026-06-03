@@ -90,7 +90,35 @@ func main() {
 
 	// Initialize authentication service
 	logger.Startup("auth", "Setting up authentication")
-	authService := auth.NewAuthService(cfg.JWTSecret)
+	authService, err := auth.NewAuthServiceWithOIDC(cfg.JWTSecret, auth.OIDCConfig{
+		Enabled:       cfg.OIDCEnabled,
+		IssuerURL:     cfg.OIDCIssuerURL,
+		Audience:      cfg.OIDCAudience,
+		JWKSURL:       cfg.OIDCJWKSURL,
+		ClientID:      cfg.OIDCClientID,
+		ClientSecret:  cfg.OIDCClientSecret,
+		UsernameClaim: cfg.OIDCUsernameClaim,
+		AdminRole:     cfg.OIDCAdminRole,
+		RoleClaims:    cfg.OIDCRoleClaims,
+	})
+	if err != nil {
+		logger.Error("Failed to setup authentication", "error", err)
+		os.Exit(1)
+	}
+	if cfg.OIDCEnabled {
+		if err := auth.ValidateOIDCConnectivity(auth.OIDCConfig{
+			Enabled:      cfg.OIDCEnabled,
+			IssuerURL:    cfg.OIDCIssuerURL,
+			ClientID:     cfg.OIDCClientID,
+			ClientSecret: cfg.OIDCClientSecret,
+			Audience:     cfg.OIDCAudience,
+			JWKSURL:      cfg.OIDCJWKSURL,
+		}); err != nil {
+			logger.Warn("OIDC is enabled but startup connectivity check failed", "error", err)
+		} else {
+			logger.Info("OIDC discovery connectivity check passed")
+		}
+	}
 
 	// Initialize SSE Broadcaster
 	logger.Startup("sse", "Initializing SSE broadcaster")

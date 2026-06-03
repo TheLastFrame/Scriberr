@@ -6,6 +6,7 @@ import '../../../lib/authTypes';
 export function useAuth() {
     const {
         token,
+        isAdmin,
         requiresRegistration,
         isInitialized,
         setToken,
@@ -40,14 +41,25 @@ export function useAuth() {
 
     const logout = useCallback(() => {
         storeLogout();
-        fetch("/api/v1/auth/logout", {
+        fetch("/api/v1/auth/oidc/logout", {
             method: "POST",
             headers: {
                 "Authorization": token ? `Bearer ${token}` : "",
             },
-        }).catch(() => { });
-
-        navigateToHome();
+        }).then(async (res) => {
+            if (!res.ok) {
+                navigateToHome();
+                return;
+            }
+            const data = await res.json().catch(() => null);
+            if (data?.redirect_url) {
+                window.location.href = data.redirect_url;
+                return;
+            }
+            navigateToHome();
+        }).catch(() => {
+            navigateToHome();
+        });
     }, [token, storeLogout]);
 
 
@@ -77,6 +89,18 @@ export function useAuth() {
             if (tokenCheckIntervalRef.current) clearInterval(tokenCheckIntervalRef.current);
         };
     }, [token, isTokenExpired, logout]);
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const oidcToken = params.get("token");
+        if (!oidcToken) return;
+
+        login(oidcToken);
+        params.delete("token");
+        const cleanQuery = params.toString();
+        const newURL = `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ""}${window.location.hash}`;
+        window.history.replaceState({}, "", newURL);
+    }, [login]);
 
     useEffect(() => {
         const initializeAuth = async () => {
@@ -109,6 +133,7 @@ export function useAuth() {
 
     return {
         token,
+        isAdmin,
         isAuthenticated,
         requiresRegistration,
         isInitialized,

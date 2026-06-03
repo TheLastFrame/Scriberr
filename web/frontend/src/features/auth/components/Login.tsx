@@ -162,6 +162,27 @@ export function Login({ onLogin }: LoginProps) {
 									"Sign In"
 								)}
 							</Button>
+
+							<div className="relative py-1">
+								<div className="absolute inset-0 flex items-center">
+									<span className="w-full border-t border-[var(--border-subtle)]" />
+								</div>
+								<div className="relative flex justify-center text-xs uppercase">
+									<span className="bg-[var(--bg-card)] px-2 text-[var(--text-tertiary)]">Or</span>
+								</div>
+							</div>
+
+							<Button
+								type="button"
+								variant="outline"
+								className="w-full h-11 rounded-xl border-[var(--border-subtle)]"
+								onClick={() => {
+									window.location.href = "/api/v1/auth/oidc/start";
+								}}
+								disabled={loading}
+							>
+								Continue with OIDC
+							</Button>
 						</form>
 					</div>
 

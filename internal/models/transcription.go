@@ -10,6 +10,7 @@ import (
 // TranscriptionJob represents a transcription job record
 type TranscriptionJob struct {
 	ID                    string         `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	UserID                *uint          `json:"user_id,omitempty" gorm:"index"`
 	Title                 *string        `json:"title,omitempty" gorm:"type:text"`
 	Status                JobStatus      `json:"status" gorm:"type:varchar(20);not null;default:'pending'"`
 	AudioPath             string         `json:"audio_path" gorm:"type:text;not null"`
@@ -146,6 +147,7 @@ type User struct {
 	ID                       uint      `json:"id" gorm:"primaryKey"`
 	Username                 string    `json:"username" gorm:"uniqueIndex;not null;type:varchar(50)"`
 	Password                 string    `json:"-" gorm:"not null;type:varchar(255)"`
+	IsAdmin                  bool      `json:"is_admin" gorm:"not null;default:false;index"`
 	DefaultProfileID         *string   `json:"default_profile_id,omitempty" gorm:"type:varchar(36)"`
 	AutoTranscriptionEnabled bool      `json:"auto_transcription_enabled" gorm:"not null;default:false"`
 	CreatedAt                time.Time `json:"created_at" gorm:"autoCreateTime"`

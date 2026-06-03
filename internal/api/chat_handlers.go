@@ -158,6 +158,10 @@ func (h *Handler) CreateChatSession(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Transcription not found"})
 		return
 	}
+	if !ensureJobOwnership(c, transcription) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Transcription not found"})
+		return
+	}
 
 	if transcription.Status != models.StatusCompleted || transcription.Transcript == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Transcription must be completed to create a chat session"})
@@ -228,6 +232,11 @@ func (h *Handler) GetChatSessions(c *gin.Context) {
 		return
 	}
 
+	job, err := h.jobRepo.FindByID(c.Request.Context(), transcriptionID)
+	if err != nil || !ensureJobOwnership(c, job) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Transcription not found"})
+		return
+	}
 	sessions, err := h.chatRepo.ListByJob(c.Request.Context(), transcriptionID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get chat sessions"})
@@ -302,6 +311,11 @@ func (h *Handler) GetChatSession(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get chat session"})
+		return
+	}
+	job, err := h.jobRepo.FindByID(c.Request.Context(), session.TranscriptionID)
+	if err != nil || !ensureJobOwnership(c, job) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Chat session not found"})
 		return
 	}
 
@@ -382,6 +396,10 @@ func (h *Handler) SendChatMessage(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get chat session"})
+		return
+	}
+	if !ensureJobOwnership(c, &session.Transcription) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Chat session not found"})
 		return
 	}
 
@@ -716,6 +734,11 @@ func (h *Handler) UpdateChatSessionTitle(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get chat session"})
 		return
 	}
+	job, err := h.jobRepo.FindByID(c.Request.Context(), session.TranscriptionID)
+	if err != nil || !ensureJobOwnership(c, job) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Chat session not found"})
+		return
+	}
 
 	session.Title = req.Title
 	if err := h.chatRepo.Update(c.Request.Context(), session); err != nil {
@@ -757,6 +780,20 @@ func (h *Handler) DeleteChatSession(c *gin.Context) {
 		return
 	}
 
+	session, err := h.chatRepo.FindByID(c.Request.Context(), sessionID)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Chat session not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get chat session"})
+		return
+	}
+	job, err := h.jobRepo.FindByID(c.Request.Context(), session.TranscriptionID)
+	if err != nil || !ensureJobOwnership(c, job) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Chat session not found"})
+		return
+	}
 	if err := h.chatRepo.DeleteSession(c.Request.Context(), sessionID); err != nil {
 		if err == gorm.ErrRecordNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Chat session not found"})
@@ -815,6 +852,11 @@ func (h *Handler) AutoGenerateChatTitle(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get chat session"})
+		return
+	}
+	job, err := h.jobRepo.FindByID(c.Request.Context(), session.TranscriptionID)
+	if err != nil || !ensureJobOwnership(c, job) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Chat session not found"})
 		return
 	}
 

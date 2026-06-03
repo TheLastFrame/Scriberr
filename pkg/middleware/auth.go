@@ -60,6 +60,11 @@ func AuthMiddleware(authService *auth.AuthService) gin.HandlerFunc {
 		c.Set("auth_type", "jwt")
 		c.Set("user_id", claims.UserID)
 		c.Set("username", claims.Username)
+		if claims.OIDCSubject != "" {
+			c.Set("oidc_subject", claims.OIDCSubject)
+			c.Set("oidc_issuer", claims.OIDCIssuer)
+			c.Set("email", claims.OIDCEmail)
+		}
 		c.Next()
 	}
 }
@@ -130,6 +135,11 @@ func JWTOnlyMiddleware(authService *auth.AuthService) gin.HandlerFunc {
 		c.Set("auth_type", "jwt")
 		c.Set("user_id", claims.UserID)
 		c.Set("username", claims.Username)
+		if claims.OIDCSubject != "" {
+			c.Set("oidc_subject", claims.OIDCSubject)
+			c.Set("oidc_issuer", claims.OIDCIssuer)
+			c.Set("email", claims.OIDCEmail)
+		}
 		c.Next()
 	}
 }

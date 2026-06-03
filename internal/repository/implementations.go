@@ -132,12 +132,17 @@ func (r *jobRepository) ListWithParams(ctx context.Context, offset, limit int, s
 }
 
 func (r *jobRepository) ListByUser(ctx context.Context, userID uint, offset, limit int) ([]models.TranscriptionJob, int64, error) {
-	// Note: Currently TranscriptionJob doesn't have a UserID field in the provided model.
-	// Assuming we might need to add it or this is a placeholder for future multi-user support.
-	// For now, we'll just return all jobs as the current app seems single-user focused or
-	// missing the link.
-	// TODO: Add UserID to TranscriptionJob model if multi-user isolation is required.
-	return r.List(ctx, offset, limit)
+	var jobs []models.TranscriptionJob
+	var count int64
+
+	db := r.db.WithContext(ctx).Model(&models.TranscriptionJob{}).Where("user_id = ?", userID)
+	if err := db.Count(&count).Error; err != nil {
+		return nil, 0, err
+	}
+	if err := db.Order("created_at desc").Offset(offset).Limit(limit).Find(&jobs).Error; err != nil {
+		return nil, 0, err
+	}
+	return jobs, count, nil
 }
 
 func (r *jobRepository) UpdateTranscript(ctx context.Context, jobID string, transcript string) error {

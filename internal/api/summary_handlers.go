@@ -204,6 +204,10 @@ func (h *Handler) GetSummarySettings(c *gin.Context) {
 // @Security ApiKeyAuth
 // @Router /api/v1/summaries/settings [post]
 func (h *Handler) SaveSummarySettings(c *gin.Context) {
+	if !h.requireAdmin(c) {
+		return
+	}
+
 	var req SummarySettingsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
