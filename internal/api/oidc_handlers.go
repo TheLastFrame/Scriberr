@@ -194,6 +194,9 @@ func (h *Handler) OIDCCallback(c *gin.Context) {
 		"email_present", claims.OIDCEmail != "",
 		"is_admin", claims.IsAdmin,
 		"admin_claim", claims.OIDCAdminClaim,
+		"configured_admin_role", h.config.OIDCAdminRole,
+		"configured_role_claims", h.config.OIDCRoleClaims,
+		"configured_username_claim", h.config.OIDCUsernameClaim,
 	)
 
 	user, err := h.userRepo.FindByUsername(c.Request.Context(), username)

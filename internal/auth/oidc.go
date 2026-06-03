@@ -35,16 +35,17 @@ type oidcDiscoveryDocument struct {
 }
 
 type oidcVerifier struct {
-	enabled    bool
-	issuer     string
-	aud        string
-	jwksURL    string
-	adminRole  string
-	roleClaims []string
-	client     *http.Client
-	mu         sync.RWMutex
-	keys       map[string]interface{}
-	lastSync   time.Time
+	enabled       bool
+	issuer        string
+	aud           string
+	jwksURL       string
+	usernameClaim string
+	adminRole     string
+	roleClaims    []string
+	client        *http.Client
+	mu            sync.RWMutex
+	keys          map[string]interface{}
+	lastSync      time.Time
 }
 
 type oidcRoleAccess struct {
@@ -59,6 +60,7 @@ type oidcClaims struct {
 	Groups         []string                  `json:"groups"`
 	RealmAccess    oidcRoleAccess            `json:"realm_access"`
 	ResourceAccess map[string]oidcRoleAccess `json:"resource_access"`
+	RawClaims      map[string]any            `json:"-"`
 	jwt.RegisteredClaims
 }
 
@@ -90,16 +92,21 @@ func newOIDCVerifier(cfg OIDCConfig) (*oidcVerifier, error) {
 		adminRole = "admin"
 	}
 	roleClaims := parseOIDCRoleClaims(cfg.RoleClaims)
+	usernameClaim := strings.TrimSpace(cfg.UsernameClaim)
+	if usernameClaim == "" {
+		usernameClaim = "preferred_username"
+	}
 
 	return &oidcVerifier{
-		enabled:    true,
-		issuer:     strings.TrimRight(cfg.IssuerURL, "/"),
-		aud:        aud,
-		jwksURL:    strings.TrimSpace(cfg.JWKSURL),
-		adminRole:  adminRole,
-		roleClaims: roleClaims,
-		client:     &http.Client{Timeout: 8 * time.Second},
-		keys:       map[string]interface{}{},
+		enabled:       true,
+		issuer:        strings.TrimRight(cfg.IssuerURL, "/"),
+		aud:           aud,
+		jwksURL:       strings.TrimSpace(cfg.JWKSURL),
+		usernameClaim: usernameClaim,
+		adminRole:     adminRole,
+		roleClaims:    roleClaims,
+		client:        &http.Client{Timeout: 8 * time.Second},
+		keys:          map[string]interface{}{},
 	}, nil
 }
 
@@ -131,6 +138,65 @@ func ValidateOIDCConnectivity(cfg OIDCConfig) error {
 		return fmt.Errorf("oidc discovery document missing required endpoints")
 	}
 	return nil
+}
+
+func (c *oidcClaims) UnmarshalJSON(data []byte) error {
+	type oidcClaimsAlias oidcClaims
+	var claims oidcClaimsAlias
+	if err := json.Unmarshal(data, &claims); err != nil {
+		return err
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*c = oidcClaims(claims)
+	c.RawClaims = raw
+	return nil
+}
+
+func (c *oidcClaims) username(usernameClaim string) string {
+	claim := strings.TrimSpace(usernameClaim)
+	if claim == "" {
+		claim = "preferred_username"
+	}
+	if value := c.claimString(claim); value != "" {
+		return value
+	}
+	if claim != "preferred_username" {
+		return c.Username
+	}
+	return ""
+}
+
+func (c *oidcClaims) claimString(claimPath string) string {
+	switch claimPath {
+	case "preferred_username":
+		return c.Username
+	case "email":
+		return c.Email
+	case "sub":
+		return c.Sub
+	}
+	if c.RawClaims == nil {
+		return ""
+	}
+	var value any = c.RawClaims
+	for _, part := range strings.Split(claimPath, ".") {
+		claimMap, ok := value.(map[string]any)
+		if !ok {
+			return ""
+		}
+		value, ok = claimMap[part]
+		if !ok {
+			return ""
+		}
+	}
+	stringValue, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(stringValue)
 }
 
 func (v *oidcVerifier) validate(tokenString string) (*Claims, error) {
@@ -183,7 +249,7 @@ func (v *oidcVerifier) validate(tokenString string) (*Claims, error) {
 	}
 	isAdmin, adminClaim := claims.hasRole(v.adminRole, v.roleClaims)
 	return &Claims{
-		Username:         claims.Username,
+		Username:         claims.username(v.usernameClaim),
 		IsAdmin:          isAdmin,
 		OIDCSubject:      claims.Sub,
 		OIDCEmail:        claims.Email,
