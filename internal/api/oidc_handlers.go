@@ -13,6 +13,7 @@ import (
 
 	"scriberr/internal/auth"
 	"scriberr/internal/models"
+	"scriberr/pkg/logger"
 
 	"github.com/gin-gonic/gin"
 )
@@ -186,6 +187,15 @@ func (h *Handler) OIDCCallback(c *gin.Context) {
 		return
 	}
 
+	logger.Debug("OIDC login claims evaluated",
+		"username", username,
+		"subject", claims.OIDCSubject,
+		"issuer", claims.OIDCIssuer,
+		"email_present", claims.OIDCEmail != "",
+		"is_admin", claims.IsAdmin,
+		"admin_claim", claims.OIDCAdminClaim,
+	)
+
 	user, err := h.userRepo.FindByUsername(c.Request.Context(), username)
 	if err != nil {
 		randomPassword, randErr := randomOIDCString(24)
@@ -204,14 +214,17 @@ func (h *Handler) OIDCCallback(c *gin.Context) {
 			return
 		}
 		user = newUser
+		logger.Debug("OIDC user provisioned", "username", username, "is_admin", user.IsAdmin, "admin_claim", claims.OIDCAdminClaim)
 	} else if user.IsAdmin != claims.IsAdmin {
 		// Keep OIDC-managed admin status in sync on every OIDC login.
 		// If the provider removes the configured admin role, the local user is demoted.
+		oldIsAdmin := user.IsAdmin
 		user.IsAdmin = claims.IsAdmin
 		if err := h.userRepo.Update(c.Request.Context(), user); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update user role"})
 			return
 		}
+		logger.Debug("OIDC user admin state synced", "username", username, "old_is_admin", oldIsAdmin, "new_is_admin", user.IsAdmin, "admin_claim", claims.OIDCAdminClaim)
 	}
 
 	jwtToken, err := h.authService.GenerateToken(user)

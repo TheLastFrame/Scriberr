@@ -39,12 +39,13 @@ func NewAuthServiceWithOIDC(jwtSecret string, oidcConfig OIDCConfig) (*AuthServi
 
 // Claims represents JWT claims
 type Claims struct {
-	UserID      uint   `json:"user_id"`
-	Username    string `json:"username"`
-	IsAdmin     bool   `json:"is_admin"`
-	OIDCSubject string `json:"oidc_subject,omitempty"`
-	OIDCEmail   string `json:"oidc_email,omitempty"`
-	OIDCIssuer  string `json:"oidc_issuer,omitempty"`
+	UserID         uint   `json:"user_id"`
+	Username       string `json:"username"`
+	IsAdmin        bool   `json:"is_admin"`
+	OIDCSubject    string `json:"oidc_subject,omitempty"`
+	OIDCEmail      string `json:"oidc_email,omitempty"`
+	OIDCIssuer     string `json:"oidc_issuer,omitempty"`
+	OIDCAdminClaim string `json:"oidc_admin_claim,omitempty"`
 	jwt.RegisteredClaims
 }
 

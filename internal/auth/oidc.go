@@ -181,47 +181,49 @@ func (v *oidcVerifier) validate(tokenString string) (*Claims, error) {
 			return nil, fmt.Errorf("invalid audience")
 		}
 	}
+	isAdmin, adminClaim := claims.hasRole(v.adminRole, v.roleClaims)
 	return &Claims{
 		Username:         claims.Username,
-		IsAdmin:          claims.hasRole(v.adminRole, v.roleClaims),
+		IsAdmin:          isAdmin,
 		OIDCSubject:      claims.Sub,
 		OIDCEmail:        claims.Email,
 		OIDCIssuer:       claims.Issuer,
+		OIDCAdminClaim:   adminClaim,
 		RegisteredClaims: claims.RegisteredClaims,
 	}, nil
 }
 
-func (c *oidcClaims) hasRole(roleName string, roleClaims []string) bool {
+func (c *oidcClaims) hasRole(roleName string, roleClaims []string) (bool, string) {
 	for _, claim := range roleClaims {
 		switch claim {
 		case "roles":
 			if hasOIDCRole(c.Roles, roleName) {
-				return true
+				return true, claim
 			}
 		case "groups":
 			if hasOIDCRole(c.Groups, roleName) {
-				return true
+				return true, claim
 			}
 		case "realm_access.roles":
 			if hasOIDCRole(c.RealmAccess.Roles, roleName) {
-				return true
+				return true, claim
 			}
 		case "resource_access.*.roles":
-			for _, access := range c.ResourceAccess {
+			for clientID, access := range c.ResourceAccess {
 				if hasOIDCRole(access.Roles, roleName) {
-					return true
+					return true, "resource_access." + clientID + ".roles"
 				}
 			}
 		default:
 			if strings.HasPrefix(claim, "resource_access.") && strings.HasSuffix(claim, ".roles") {
 				clientID := strings.TrimSuffix(strings.TrimPrefix(claim, "resource_access."), ".roles")
 				if access, ok := c.ResourceAccess[clientID]; ok && hasOIDCRole(access.Roles, roleName) {
-					return true
+					return true, claim
 				}
 			}
 		}
 	}
-	return false
+	return false, ""
 }
 
 func parseOIDCRoleClaims(value string) []string {

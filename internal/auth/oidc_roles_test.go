@@ -42,7 +42,8 @@ func TestOIDCClaimsHasRole(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.claims.hasRole("admin", parseOIDCRoleClaims("")); got != tt.want {
+			got, _ := tt.claims.hasRole("admin", parseOIDCRoleClaims(""))
+			if got != tt.want {
 				t.Fatalf("hasRole(admin) = %v, want %v", got, tt.want)
 			}
 		})
@@ -54,10 +55,12 @@ func TestOIDCClaimsHasRoleUsesConfiguredRoleName(t *testing.T) {
 		RealmAccess: oidcRoleAccess{Roles: []string{"scriberr-admin"}},
 	}
 
-	if !claims.hasRole("scriberr-admin", parseOIDCRoleClaims("")) {
+	got, _ := claims.hasRole("scriberr-admin", parseOIDCRoleClaims(""))
+	if !got {
 		t.Fatal("expected configured role to grant admin")
 	}
-	if claims.hasRole("admin", parseOIDCRoleClaims("")) {
+	got, _ = claims.hasRole("admin", parseOIDCRoleClaims(""))
+	if got {
 		t.Fatal("did not expect hardcoded admin role to match when only configured role is present")
 	}
 }
@@ -70,10 +73,15 @@ func TestOIDCClaimsHasRoleUsesConfiguredClaimLocations(t *testing.T) {
 		},
 	}
 
-	if !claims.hasRole("admin", parseOIDCRoleClaims("resource_access.scriberr.roles")) {
+	got, adminClaim := claims.hasRole("admin", parseOIDCRoleClaims("resource_access.scriberr.roles"))
+	if !got {
 		t.Fatal("expected configured client role claim to grant admin")
 	}
-	if claims.hasRole("admin", parseOIDCRoleClaims("groups")) {
+	if adminClaim != "resource_access.scriberr.roles" {
+		t.Fatalf("admin claim = %q, want resource_access.scriberr.roles", adminClaim)
+	}
+	got, _ = claims.hasRole("admin", parseOIDCRoleClaims("groups"))
+	if got {
 		t.Fatal("did not expect disabled role claim locations to grant admin")
 	}
 }
